@@ -81,17 +81,17 @@ resource "aws_elastic_beanstalk_environment" "default" {
     value     = "public"
   }
 
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "EC2KeyName"
-    value     = "${var.key_name}"
-  }
+  # setting {
+  #   namespace = "aws:autoscaling:launchconfiguration"
+  #   name      = "EC2KeyName"
+  #   value     = "${var.key_name}"
+  # }
 
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "ImageId"
-    value     = "${var.image_id}"
-  }
+  # setting {
+  #   namespace = "aws:autoscaling:launchconfiguration"
+  #   name      = "ImageId"
+  #   value     = "${var.image_id}"
+  # }
 
   setting {
     namespace = "aws:autoscaling:updatepolicy:rollingupdate"
@@ -135,12 +135,6 @@ resource "aws_elastic_beanstalk_environment" "default" {
     value     = "${var.db_endpoint}"
   }
 
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "SOA_ENDPOINT"
-    value     = "${var.soa_endpoint}"
-  }
-
   tags {
     Role        = "backend"
     Application = "${var.app_name}"
@@ -149,10 +143,10 @@ resource "aws_elastic_beanstalk_environment" "default" {
   }
 }
 
-resource "aws_route53_record" "backend" {
-  zone_id = "${var.dns_zone}"
-  name    = "${var.domain}"
-  type    = "CNAME"
-  ttl     = "300"
-  records = ["${aws_elastic_beanstalk_environment.default.cname}"]
-}
+# resource "aws_route53_record" "backend" {
+#   zone_id = "${var.dns_zone}"
+#   name    = "${var.domain}"
+#   type    = "CNAME"
+#   ttl     = "300"
+#   records = ["${aws_elastic_beanstalk_environment.default.cname}"]
+# }

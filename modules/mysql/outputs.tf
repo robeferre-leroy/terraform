@@ -11,5 +11,5 @@ output "dbname" {
 }
 
 output "endpoint" {
-  value = "${aws_route53_record.database.name}"
+  value = "${aws_db_instance.mysql.address}"
 }

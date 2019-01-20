@@ -1,36 +1,5 @@
-# Create an AWS s3 Bucket
-resource "aws_s3_bucket" "cf_bucket" {
-  bucket        = "${var.domain}"
-  acl           = "public-read"
-  force_destroy = true
-
-  policy = <<EOF
-{
-      "Version":"2008-10-17",
-      "Statement":[{
-        "Sid":"AllowPublicRead",
-        "Effect":"Allow",
-        "Principal": {"AWS": "*"},
-        "Action":["s3:GetObject"],
-        "Resource":["arn:aws:s3:::${var.domain}/*"]
-      }]
-}
-EOF
-
-  website {
-    index_document = "index.html"
-  }
-
-  tags {
-    Role        = "bucket"
-    Application = "${var.app_name}"
-    Environment = "${var.env}"
-    Terraform   = "True"
-  }
-}
-
 resource "aws_s3_bucket" "cf_log_bucket" {
-  bucket        = "log-${var.domain}"
+  bucket        = "cf-log-${var.app_name}-${var.env}"
   acl           = "public-read"
   force_destroy = true
 
@@ -42,48 +11,39 @@ resource "aws_s3_bucket" "cf_log_bucket" {
         "Effect":"Allow",
         "Principal": {"AWS": "*"},
         "Action":["s3:GetObject"],
-        "Resource":["arn:aws:s3:::log-${var.domain}/*"]
+        "Resource":["arn:aws:s3:::cf-log-${var.app_name}-${var.env}/*"]
       }]
 }
 EOF
 
-  website {
-    index_document = "index.html"
-  }
+  # website {
+  #   index_document = "index.html"
+  # }
 
   tags {
     Role        = "bucket"
     Application = "${var.app_name}"
     Environment = "${var.env}"
     Terraform   = "True"
-  }
-}
-
-resource "aws_route53_record" "root_domain" {
-  zone_id = "${var.dns_zone}"
-  name    = "${var.domain}"
-  type    = "A"
-
-  alias {
-    name                   = "${aws_cloudfront_distribution.s3_distribution.domain_name}"
-    zone_id                = "${aws_cloudfront_distribution.s3_distribution.hosted_zone_id}"
-    evaluate_target_health = false
   }
 }
 
 # Create Cloudfront Distibution
-resource "aws_cloudfront_distribution" "s3_distribution" {
+resource "aws_cloudfront_distribution" "redmine" {
   origin {
-    domain_name = "${aws_s3_bucket.cf_bucket.bucket_domain_name}"
-    origin_id   = "myS3Origin"
+        domain_name = "${var.lb_arn}"
+    origin_id   = "myLBOrigin"
 
-    # s3_origin_config {
-    #   origin_access_identity = "origin-access-identity/cloudfront/ABCDEFG1234567"
-    # }
+    custom_origin_config {
+      http_port = "80"
+      https_port = "443"
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols = ["SSLv3"]
+    }
   }
 
   enabled             = true
-  is_ipv6_enabled     = true
+  is_ipv6_enabled     = false
   comment             = "${var.app_name}-${var.env}"
   default_root_object = "index.html"
 
@@ -93,12 +53,12 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     prefix          = "myprefix"
   }
 
-  aliases = ["${var.domain}"]
+  # aliases = ["${var.domain}"]
 
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "myS3Origin"
+    target_origin_id = "myLBOrigin"
 
     forwarded_values {
       query_string = false

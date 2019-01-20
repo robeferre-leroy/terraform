@@ -44,17 +44,17 @@ resource "aws_security_group" "mysql" {
 
 resource "aws_db_instance" "mysql" {
   allocated_storage      = 10
-  storage_type           = "gp2"
+  # storage_type           = "db.t2.medium"
   engine                 = "mysql"
-  engine_version         = "5.6.35"
+  engine_version         = "5.5.61"
   instance_class         = "db.t2.small"
   identifier             = "db-${var.db_name}-${var.app_name}-${var.env}"
   name                   = "${var.db_name}"
-  username               = "cdap"
+  username               = "username"
   password               = "globo123"
-  parameter_group_name   = "default.mysql5.6"
+  parameter_group_name   = "default.mysql5.5"
   skip_final_snapshot    = "true"
-  publicly_accessible    = "false"
+  publicly_accessible    = "true"
   multi_az               = "${var.multi_az}"
   db_subnet_group_name   = "${aws_db_subnet_group.mysql.id}"
   vpc_security_group_ids = ["${aws_security_group.mysql.id}"]
@@ -68,10 +68,10 @@ resource "aws_db_instance" "mysql" {
   }
 }
 
-resource "aws_route53_record" "database" {
-  zone_id = "${var.dns_zone}"
-  name    = "${var.domain}"
-  type    = "CNAME"
-  ttl     = "300"
-  records = ["${aws_db_instance.mysql.address}"]
-}
+# resource "aws_route53_record" "database" {
+#   zone_id = "${var.dns_zone}"
+#   name    = "${var.domain}"
+#   type    = "CNAME"
+#   ttl     = "300"
+#   records = ["${aws_db_instance.mysql.address}"]
+# }

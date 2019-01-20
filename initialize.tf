@@ -1,10 +1,15 @@
-# -----------------------------------------------------
-# Empty variable declarations for the variables that
-# will be populated in each env’s .tfvars
-# -----------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
+# - Empty variable declarations for the variables that will be populated in each env’s .tfvars
+# - This file should be shared to all env folders using Symbolic link.
+# - Values are populated on env-dev\development.tfvars for example to attribute values specific to the env.
+# ---------------------------------------------------------------------------------------------------------------------
 
 variable "env" {
-  description = "CIDR for the Private Subnet"
+  description = "Environment name definiton Eg. Dev, Test, QA and Prod"
+}
+
+variable "vpc_cidr" {
+  description = "CIDR for the VPC"
 }
 
 variable "public_subnet_cidr" {
@@ -17,20 +22,4 @@ variable "private_a_subnet_cidr" {
 
 variable "private_b_subnet_cidr" {
   description = "CIDR for the Private Subnet"
-}
-
-variable "soa_network_address" {
-  description = ""
-}
-
-variable "soa_endpoint" {
-  description = ""
-}
-
-variable "image_id" {
-  description = "image_id to use, create it using packer please"
-}
-
-variable "route53_zone_id" {
-  description = "image_id to use, create it using packer please"
 }

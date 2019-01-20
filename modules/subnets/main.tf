@@ -1,6 +1,7 @@
 /*
   Public Subnet
 */
+
 resource "aws_subnet" "eu-east-1a-public" {
   vpc_id = "${var.vpc_id}"
 
@@ -24,16 +25,7 @@ resource "aws_route_table" "eu-east-1a-public" {
     gateway_id = "${var.gateway_id}"
   }
 
-  # route {
-  #   cidr_block = "10.32.255.0/24"
-  #   gateway_id = "pcx-2bb2c642"
-  # }
-
-  route {
-    cidr_block = "${var.soa_network_address}"
-    gateway_id = "vgw-c83bcca1"
-  }
-  tags {
+    tags {
     Name        = "rt-public-${var.name}"
     Role        = "Route table"
     Application = "${var.app_name}"
@@ -46,6 +38,25 @@ resource "aws_route_table_association" "eu-east-1a-public" {
   subnet_id      = "${aws_subnet.eu-east-1a-public.id}"
   route_table_id = "${aws_route_table.eu-east-1a-public.id}"
 }
+
+resource "aws_eip" "nat" {
+  vpc      = true
+}
+
+resource "aws_nat_gateway" "gw" {
+  allocation_id = "${aws_eip.nat.id}"
+  subnet_id     = "${aws_subnet.eu-east-1a-public.id}"
+
+  tags = {
+    Name        = "nat-gateway-${var.app_name}-${var.name}"
+    Role        = "Nat Gateway"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
+  }
+}
+
+
 
 /*
   Private Subnet A
@@ -70,7 +81,7 @@ resource "aws_route_table" "eu-east-1a-private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = "${var.nat_instance_id}"
+    nat_gateway_id = "${aws_nat_gateway.gw.id}"
   }
 
   tags {
@@ -110,7 +121,7 @@ resource "aws_route_table" "eu-east-1b-private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = "${var.nat_instance_id}"
+    nat_gateway_id = "${aws_nat_gateway.gw.id}"
   }
 
   tags {

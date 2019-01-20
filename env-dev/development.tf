@@ -1,103 +1,271 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Terraform provisioning script Test
+#
+# Author: Roberto Ferreira Junior 
+# Email: roberto.ferreira@ibm.com
+# ---------------------------------------------------------------------------------------------------------------------
+
 provider "aws" {
   access_key = "${var.access_key}"
   secret_key = "${var.secret_key}"
   region     = "${var.region}"
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# My remote state file is stored in a S3 bucket to avoid local state files.
+# Also, i'm using one state file per environment for security propose, and keep my prod state safe from
+# the development workflow.
+#
+# A valid bucket should be created at your account and attributed to the bucket field.
+# ---------------------------------------------------------------------------------------------------------------------
 terraform {
   backend "s3" {
-    bucket = "tvg-negocios-terraform"
-    key    = "creativemanager/development.tfstate"
+    bucket = "tf-redmine"
+    key    = "development.tfstate"
     region = "us-east-1"
+    encrypt = true
   }
 }
 
-data "terraform_remote_state" "base" {
-  backend = "s3"
 
-  config {
-    bucket = "tvg-negocios-terraform"
-    key    = "creativemanager/base.tfstate"
-    region = "us-east-1"
+# ---------------------------------------------------------------------------------------------------------------------
+# NETWORKING => One VPC per env, NAT GW, IG GW, public and private subnets configured
+# ---------------------------------------------------------------------------------------------------------------------
+resource "aws_vpc" "main" {
+  cidr_block       = "${var.vpc_cidr}"
+  instance_tenancy = "default"
+  enable_dns_support = "True"
+  enable_dns_hostnames = "True"
+
+  tags = {
+    Name = "vpc-${var.app_name}-${var.env}"
+    Role        = "vpc"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
   }
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = "${aws_vpc.main.id}"
+
+  tags = {
+    Name        = "ig-${var.app_name}-${var.env}"
+    Role        = "InternetGateway"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
+  }
+}
+
+resource "aws_route_table" "us-east-1a-vpc" {
+
+  vpc_id = "${aws_vpc.main.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.gw.id}"
+  }
+
+  tags {
+    Name        = "rt-vpc-${var.app_name}-${var.env}"
+    Role        = "Route table"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
+  }
+}
+
+resource "aws_main_route_table_association" "vpc" {
+  vpc_id         = "${aws_vpc.main.id}"
+  route_table_id = "${aws_route_table.us-east-1a-vpc.id}"
 }
 
 module "subnets" {
-  source                = "../../modules/subnets/"
+  source                = "../modules/subnets/"
   app_name              = "${var.app_name}"
   name                  = "${var.app_name}-${var.env}"
   env                   = "${var.env}"
-  vpc_id                = "${var.base_vpc}"
+  vpc_id                = "${aws_vpc.main.id}"
   public_subnet_cidr    = "${var.public_subnet_cidr}"
   private_a_subnet_cidr = "${var.private_a_subnet_cidr}"
   private_b_subnet_cidr = "${var.private_b_subnet_cidr}"
-  soa_network_address   = "${var.soa_network_address}"
+  gateway_id            = "${aws_internet_gateway.gw.id}"
   availability_zone     = "us-east-1a"
-  gateway_id            = "igw-be4f9dc6"
-  nat_instance_id       = "nat-0e40a0546b3efd66a"
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# DB Provisioning
+# ---------------------------------------------------------------------------------------------------------------------
 module "mysql" {
-  source   = "../../modules/mysql/"
+  source   = "../modules/mysql/"
   subnet_a = "${module.subnets.subnet_private_a_id}"
   subnet_b = "${module.subnets.subnet_private_b_id}"
   app_name = "${var.app_name}"
   env      = "${var.env}"
   db_name  = "db${var.app_name}${var.env}"
-  domain   = "db.${var.app_name}.${var.env}.${var.domain}"
-  vpc_id   = "${var.base_vpc}"
+  vpc_id   = "${aws_vpc.main.id}"
   multi_az = "false"
-  dns_zone = "${var.route53_zone_id}"
 }
 
-module "beanstalk" {
-  app_name       = "${data.terraform_remote_state.base.app_name}"
-  source         = "../../modules/beanstalk_env/"
-  db_username    = "${module.mysql.username}"
-  db_password    = "${module.mysql.password}"
-  db_name        = "${module.mysql.dbname}"
-  db_endpoint    = "${module.mysql.endpoint}"
-  subnet_id      = "${module.subnets.subnet_public_id}"
-  env            = "${var.env}"
-  solution-stack = "${var.eb_solution_stack_name}"
-  key_name       = "${var.app_name}-${var.env}"
-  vpc_id         = "${var.base_vpc}"
-  soa_endpoint   = "${var.soa_endpoint}"
-  image_id       = "${var.image_id}"
-  dns_zone       = "${var.route53_zone_id}"
-  domain         = "backend.${var.app_name}.${var.env}.${var.domain}"
+# ---------------------------------------------------------------------------------------------------------------------
+# EC2 Provisioning
+# ---------------------------------------------------------------------------------------------------------------------
+resource "aws_security_group" "allow_all" {
+  name        = "allow_all"
+  description = "Allow all inbound traffic"
+  vpc_id      = "${aws_vpc.main.id}"
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    cidr_blocks     = ["0.0.0.0/0"]
+  }
 }
 
-module "mysql-logs" {
-  source   = "../../modules/mysql/"
-  app_name = "${var.app_name}"
-  env      = "${var.env}"
-  db_name  = "dblogs${var.app_name}${var.env}"
-  domain   = "db.log.${var.app_name}.${var.env}.apps.tvglobo.com.br"
-  subnet_a = "${module.subnets.subnet_private_a_id}"
-  subnet_b = "${module.subnets.subnet_private_b_id}"
-  multi_az = "false"
-  vpc_id   = "${var.base_vpc}"
-  dns_zone = "${var.route53_zone_id}"
+data "aws_ami" "centos" {
+  owners      = ["057448758665"]
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["CentOS 7.4.1708 - HVM"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
 }
 
-module "cloudfront_static" {
-  source   = "../../modules/cloudfront/"
-  dns_zone = "${var.route53_zone_id}"
-  app_name = "${var.app_name}"
-  env      = "${var.env}"
-  domain   = "${var.app_name}.${var.env}.${var.domain}"
-}
+resource "aws_instance" "redmine" {
+  ami           = "${data.aws_ami.centos.id}"
+  subnet_id     = "${module.subnets.subnet_public_id}"
+  associate_public_ip_address = true
+  instance_type = "t2.small"
+  key_name = "terraform_key"
+  security_groups = ["${aws_security_group.allow_all.id}"]
+  depends_on = ["module.mysql"]
 
-resource "aws_s3_bucket" "bucket" {
-  bucket        = "tvg-${var.app_name}-datastore"
-  acl           = "public-read"
-  force_destroy = true
-
-  tags {
-    Role        = "bucket"
+  tags = {
+    Name        = "ec2-${var.app_name}-${var.env}"
+    Role        = "Ec2"
     Application = "${var.app_name}"
     Environment = "${var.env}"
     Terraform   = "True"
+  }
+}
+
+resource "aws_key_pair" "terraform_ec2_key" {
+  key_name = "terraform_key"
+  public_key = "${file("../base/scripts/keypair/terraform_key.pub")}"
+}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# LB Provisioning
+# ---------------------------------------------------------------------------------------------------------------------
+resource "aws_lb" "redmine" {
+  name               = "nlb-${var.app_name}-${var.env}"
+  load_balancer_type = "network"
+  internal           = false
+  subnets            = ["${module.subnets.subnet_public_id}"]
+  enable_deletion_protection = false
+  tags = {
+    Name        = "nlb-${var.app_name}-${var.env}"
+    Role        = "NLB"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
+  }
+}
+
+resource "aws_lb_target_group" "redmine" {
+  name     = "tg-${var.app_name}-${var.env}"
+  port     = 80
+  vpc_id   = "${aws_vpc.main.id}"
+  protocol = "TCP"
+
+  target_type = "instance"
+  tags = {
+    Name        = "tg-${var.app_name}-${var.env}"
+    Role        = "TargetGroup"
+    Application = "${var.app_name}"
+    Environment = "${var.env}"
+    Terraform   = "True"
+  }
+}
+
+resource "aws_lb_listener" "redmine" {
+  load_balancer_arn = "${aws_lb.redmine.arn}"
+  port              = 80
+  protocol          ="TCP"
+  default_action {
+    type             = "forward"
+    target_group_arn = "${aws_lb_target_group.redmine.arn}"
+  }
+}
+
+resource "aws_lb_target_group_attachment" "redmine" {
+  target_group_arn = "${aws_lb_target_group.redmine.arn}"
+  target_id        = "${aws_instance.redmine.id}"
+  port             = 5777
+}
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Cloudfront distribution Provisioning
+# ---------------------------------------------------------------------------------------------------------------------
+module "cloudfront_static" {
+  source   = "../modules/cloudfront/"
+  app_name = "${var.app_name}"
+  env      = "${var.env}"
+  lb_arn = "${aws_lb.redmine.dns_name}"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Provision the server using remote-exec
+# ---------------------------------------------------------------------------------------------------------------------
+resource "null_resource" "redmine" {
+  triggers {
+    public_ip = "${aws_instance.redmine.public_ip}"
+  }
+
+  connection {
+    type = "ssh"
+    host = "${aws_instance.redmine.public_ip}"
+    user = "ec2-user"
+    port = "22"
+    private_key="${file("../base/scripts/keypair/terraform_key")}"
+    agent = true
+  }
+
+  provisioner "file" {
+    source      = "../base/scripts/ansible/playbooks/playbook.yml"
+    destination = "/tmp/playbook.yml"
+  }
+
+  provisioner "remote-exec" {
+
+     inline = ["sudo yum update -y",
+               "sudo yum install ansible -y",
+               "sudo ansible-galaxy install bngsudheer.redmine",
+               "sudo ansible-galaxy install bngsudheer.centos_base",
+               "sudo ansible-playbook -e redmine_sql_database_name=${module.mysql.dbname} -e redmine_sql_password=${module.mysql.password} -e redmine_sql_database_host=${module.mysql.endpoint} /tmp/playbook.yml",
+               "sudo systemctl start redmine"]
   }
 }

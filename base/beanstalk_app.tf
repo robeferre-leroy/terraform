@@ -6,13 +6,14 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "tvg-negocios-terraform"
-    key    = "creativemanager/base.tfstate"
+    bucket = "tf-redmine"
+    key    = "base.tfstate"
     region = "us-east-1"
+    encrypt = true
   }
 }
 
 resource "aws_elastic_beanstalk_application" "beanstalkApp" {
   name        = "${var.app_name}"
-  description = ""
+  description = "Redmine application"
 }

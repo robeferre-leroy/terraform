@@ -1,0 +1,17 @@
+---
+- hosts: 127.0.0.1
+  vars:
+    - centos_base_enable_epel: true
+    - centos_base_fail2ban_configuration: true
+    - centos_base_install_selinux_packages: false
+    - centos_base_basic_packages: true
+    - redmine_configure_firewalld: true
+    - redmine_additional_configuration: false
+    - redmine_configure_nginx: false
+    - redmine_unicorn_port: 5777
+    - redmine_sql_username: "username"
+    - redmine_sql_database_name: "dbredminedev"
+    - redmine_sql_password: "globo123"
+  roles:
+    - bngsudheer.centos_base
+    - bngsudheer.redmine

@@ -9,6 +9,6 @@ variable "db_endpoint" {}
 variable "domain" {}
 variable "key_name" {}
 variable "vpc_id" {}
-variable "soa_endpoint" {}
-variable "image_id" {}
-variable "dns_zone" {}
+# variable "soa_endpoint" {}
+# variable "image_id" {}
+# variable "dns_zone" {}
